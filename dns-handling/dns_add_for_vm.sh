@@ -1,9 +1,9 @@
 #!/bin/bash
 
-if [ "${domain}" == "cust.hcloud.cz" ]; then
+if [ "${domain}" == "cust.hcloud.local" ]; then
 
   # muster sql
-  # INSERT INTO customer_dns VALUES ('test.hcloud.cz',259200,'A','10.10.10.10',0,0,129,'sp',0,0);
+  # INSERT INTO customer_dns VALUES ('test.hcloud.local',259200,'A','10.10.10.10',0,0,129,'sp',0,0);
 
   # muster commnad
   #sudo mysql --defaults-extra-file=.my-ptproxy.cnf hportal -e 'show tables';
@@ -17,7 +17,7 @@ if [ "${domain}" == "cust.hcloud.cz" ]; then
     exit 11;
   fi;
 
-  vmname_full=${vmname}."cust.hcloud.cz";
+  vmname_full=${vmname}."cust.hcloud.local";
 
   SQL_CHECK="select name,rdtype,rdata,id_cust,service from hportal.customer_dns ORDER BY name ASC;"
   #SQL_CHECK="select name,rdtype,rdata,id_cust,service from hportal.customer_dns WHERE name LIKE '${vmname_full}' ORDER BY name ASC;"

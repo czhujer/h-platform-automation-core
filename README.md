@@ -1,0 +1,1 @@
+# h-platform-automation-core

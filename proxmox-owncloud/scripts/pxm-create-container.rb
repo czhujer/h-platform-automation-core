@@ -13,6 +13,9 @@ require 'optparse'
 # http://fog.io/about/getting_started.html
 # storing passwords
 
+# https://docs.ruby-lang.org/en/2.1.0/Socket.html
+require 'socket'
+
 #variables
 
 options = {}
@@ -50,7 +53,7 @@ $ctid_highest = 200
 $disk_size_selected = $disk_size_selected + 5
 
 # basic template
-$pxm_ostemplate = "local:vztmpl/centos-7-default_20171212_amd64.tar.xz"
+$pxm_ostemplate = "local:vztmpl/centos-7-default_20190926_amd64.tar.xz"
 
 $pxm_hostname_prefix = "oc-"
 
@@ -58,7 +61,8 @@ $pxm_hostname_prefix = "oc-"
 $pxm_capability = ""
 
 $pxm_masters = Array.new
-$pxm_masters.push("ocb2c-pxm1")
+#$pxm_masters.push("hpa-pxm1")
+$pxm_masters.push(Socket.gethostname)
 
 jenkins_export = File.open("/home/jenkins-slave/workspace/create-owncloud-b2c-container/export_props.properties", 'w')
 #methods
@@ -200,14 +204,14 @@ puts ""
 
 container_new = node.containers.create({
   vmid:       ctid_new,
-  storage:    'lvm4ct',
+  storage:    'local',
   ostemplate: $pxm_ostemplate,
   password:   ct_password,
   #ip_address: ip,
   memory:     $ram_size_selected.to_s,
   swap:       '512',
   hostname:   options[:hostname],
-  rootfs:     'lvm4ct:'+$disk_size_selected.to_s,
+  rootfs:     'local:'+$disk_size_selected.to_s,
   onboot:     '1',
 })
 
@@ -241,6 +245,5 @@ else
   puts "container starting failed"
   puts " (ct status: " + status.to_s + ")"
 end
-
 
 exit 0

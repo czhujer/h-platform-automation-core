@@ -27,7 +27,7 @@ OptionParser.new do |opts|
   opts.on('-h', '--hostname HOSTNAME', 'Hostname of new container') { |v| options[:hostname] = v }
   opts.on('-m', '--master MASTER_HOSTNAME', 'Hostname of master server') { |v| options[:master] = v }
   opts.on('-d', '--disk SIZE_IN_GB', 'Size of disk for container') { |v| options[:disk_size] = v }
-  opts.on('-r', '--ram SIZE_IN_MB', 'Size of disk for container') { |v| options[:ram_size] = v }
+  opts.on('-r', '--ram SIZE_IN_MB', 'Size of ram for container') { |v| options[:ram_size] = v }
   opts.on('-c', '--config /path/your-config.yaml', 'Config file for proxmox login') { |v| options[:config_file] = v }
 
 end.parse!
@@ -104,7 +104,7 @@ $pxm_masters.each do |master|
   $ctids = Array.new
 
   # connect to compute
-  puts "connect to promox server(s)..."
+  puts "connect to proxmox server(s)..."
 
   compute = Fog::Compute::Proxmox.new(
       pve_username: cnf_login_user,

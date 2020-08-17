@@ -13,6 +13,11 @@ require 'optparse'
 # http://fog.io/about/getting_started.html
 # storing passwords
 
+# https://docs.ruby-lang.org/en/2.1.0/Socket.html
+require 'socket'
+
+require 'yaml'
+
 #variables
 
 options = {}
@@ -23,6 +28,7 @@ OptionParser.new do |opts|
   opts.on('-m', '--master MASTER_HOSTNAME', 'Hostname of master server') { |v| options[:master] = v }
   opts.on('-d', '--disk SIZE_IN_GB', 'Size of disk for container') { |v| options[:disk_size] = v }
   opts.on('-r', '--ram SIZE_IN_MB', 'Size of disk for container') { |v| options[:ram_size] = v }
+  opts.on('-c', '--config /path/your-config.yaml', 'Config file for proxmox login') { |v| options[:config_file] = v }
 
 end.parse!
 
@@ -44,13 +50,19 @@ else
  $ram_size_selected = 1024
 end
 
+if  options[:config_file].nil?
+  $config_file = "/root/proxmox-config.yaml"
+else
+  $config_file = options[:config_file]
+end
+
 $ctid_highest = 200
 
 # increase disk for OS space
 $disk_size_selected = $disk_size_selected + 5
 
 # basic template
-$pxm_ostemplate = "local:vztmpl/centos-7-default_20171212_amd64.tar.xz"
+$pxm_ostemplate = "local:vztmpl/centos-7-default_20190926_amd64.tar.xz"
 
 $pxm_hostname_prefix = "oc-"
 
@@ -58,9 +70,22 @@ $pxm_hostname_prefix = "oc-"
 $pxm_capability = ""
 
 $pxm_masters = Array.new
-$pxm_masters.push("ocb2c-pxm1")
+#$pxm_masters.push("hpa-pxm1")
+$pxm_masters.push(Socket.gethostname)
 
 jenkins_export = File.open("/home/jenkins-slave/workspace/create-owncloud-b2c-container/export_props.properties", 'w')
+
+cnf = YAML::load(
+    File.open($config_file)
+)
+
+cnf_login_user = cnf[0]['login'][0]['user'].to_s
+cnf_login_password = cnf[0]['login'][1]['password'].to_s
+
+puts "Loaded from config: "
+puts "login user: " + cnf_login_user
+#puts "login password: " + cnf_login_password
+
 #methods
 def generate_ip(master, ctid)
     ip_d = (ctid.to_i - 200) + 10
@@ -82,8 +107,8 @@ $pxm_masters.each do |master|
   puts "connect to promox server(s)..."
 
   compute = Fog::Compute::Proxmox.new(
-      #pve_username: 'root@pam',
-      #pve_password: 'password',
+      pve_username: cnf_login_user,
+      pve_password: cnf_login_password,
   		pve_url: 'https://127.0.0.1:8006/api2/json',
   		connection_options: {
         ssl_verify_peer: false,
@@ -152,8 +177,8 @@ puts "\t--> global highest CTID: " + $ctid_highest.to_s
 puts "connect to proxmox server..."
 
 compute = Fog::Compute::Proxmox.new(
-    #pve_username: 'root@pam',
-    #pve_password: 'password',
+    pve_username: cnf_login_user,
+    pve_password: cnf_login_password,
     pve_url: 'https://127.0.0.1:8006/api2/json',
     connection_options: {
       ssl_verify_peer: false,
@@ -200,14 +225,14 @@ puts ""
 
 container_new = node.containers.create({
   vmid:       ctid_new,
-  storage:    'lvm4ct',
+  storage:    'local',
   ostemplate: $pxm_ostemplate,
   password:   ct_password,
   #ip_address: ip,
   memory:     $ram_size_selected.to_s,
   swap:       '512',
   hostname:   options[:hostname],
-  rootfs:     'lvm4ct:'+$disk_size_selected.to_s,
+  rootfs:     'local:'+$disk_size_selected.to_s,
   onboot:     '1',
 })
 
@@ -241,6 +266,5 @@ else
   puts "container starting failed"
   puts " (ct status: " + status.to_s + ")"
 end
-
 
 exit 0

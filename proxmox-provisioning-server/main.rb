@@ -12,40 +12,29 @@ require 'rack/tracer'
 require 'fog/proxmox'
 
 # https://docs.ruby-lang.org/en/2.1.0/Socket.html
-#require 'socket'
+require 'socket'
 
 require 'yaml'
 
 # vars
 $config_file = "/root/proxmox-config.yaml"
-$pxm_master = "localhost"
-#$pxm_master_name = Socket.gethostname
+$pxm_master = Socket.gethostname
 
 # tracing init
 OpenTracing.global_tracer = Jaeger::Client.build(service_name: 'proxmox-provisioning-server')
 
 use Rack::Tracer
 
-#load proxmox login
-cnf = YAML::load(
-    File.open($config_file)
-)
-
-cnf_login_user = cnf[0]['login'][0]['user'].to_s
-cnf_login_password = cnf[0]['login'][1]['password'].to_s
-
-puts "Loaded from config: "
-puts "login user: " + cnf_login_user
-#puts "login password: " + cnf_login_password
-
-
 # Models
 class Container
-  def initialize(id, hostname, disk, ram)
-    @id         = id
-    @hostname   = hostname
-    @disk       = disk
-    @ram        = ram
+  # def initialize(id, hostname, disk, ram)
+  #   @id         = id
+  #   @hostname   = hostname
+  #   @disk       = disk
+  #   @ram        = ram
+  # end
+
+  def initialize()
   end
 
   def all(*)
@@ -58,11 +47,32 @@ class Container
 end
 
 class Proxmox
-  def initialize()
+  def initialize(config_file,pxm_master)
+    config_file = config_file
+    pxm_master = pxm_master
+
+    connect(config_file,pxm_master)
   end
 
-  def connect()
-    #puts "connect to proxmox server.."
+  private
+
+  def connect(config_file,pxm_master)
+    config_file = config_file
+    pxm_master = pxm_master
+
+    #load proxmox login
+    cnf = YAML::load(
+        File.open($config_file)
+    )
+
+    cnf_login_user = cnf[0]['login'][0]['user'].to_s
+    cnf_login_password = cnf[0]['login'][1]['password'].to_s
+
+    puts "Loaded from config: "
+    puts "login user: " + cnf_login_user
+    #puts "login password: " + cnf_login_password
+
+    puts "connect to proxmox server.."
 
     compute = Fog::Compute::Proxmox.new(
         pve_username: cnf_login_user,
@@ -74,15 +84,19 @@ class Proxmox
     )
 
     begin
-      node = compute.nodes.find_by_id pxe_master
+      node = compute.nodes.find_by_id pxm_master
     rescue Exception => msg
       puts " Error: " + msg.to_s
     end
 
-    puts " Node stats: " + node.statistics.to_s
+    #puts " Node stats: " + node.statistics.to_s
   end
 end
-containers = Container.new("1", "test1", 260, "")
+
+proxmox = Proxmox.new($config_file,$pxm_master)
+
+#containers = Container.new("1", "test1", 260, "")
+containers = Container.new()
 
 # Endpoints
 get '/' do

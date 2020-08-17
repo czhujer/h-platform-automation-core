@@ -26,32 +26,31 @@ OpenTracing.global_tracer = Jaeger::Client.build(service_name: 'proxmox-provisio
 use Rack::Tracer
 
 # Models
-class Container
-  # def initialize(id, hostname, disk, ram)
-  #   @id         = id
-  #   @hostname   = hostname
-  #   @disk       = disk
-  #   @ram        = ram
-  # end
-
-  def initialize()
-  end
-
-  def all(*)
-    data = {
-        id:"1",
-        hostname:"test1"
-    }
-    data
-  end
-end
-
 class Proxmox
   def initialize(config_file,pxm_master)
     config_file = config_file
     pxm_master = pxm_master
+    @node
 
     connect(config_file,pxm_master)
+  end
+
+  def get_containers()
+    puts "loading existing containers..."
+
+    if @proxmox_node.nil?
+      msg = " Error: connect failed!"
+      puts msg
+      return false, msg.to_s
+    end
+
+    begin
+      containers = @proxmox_node.containers.all
+      return true, containers
+    rescue Exception => msg
+      puts " Error: " + msg.to_s
+      return false, msg.to_s
+    end
   end
 
   private
@@ -84,18 +83,36 @@ class Proxmox
     )
 
     begin
-      node = compute.nodes.find_by_id pxm_master
+      @proxmox_node = compute.nodes.find_by_id pxm_master
     rescue Exception => msg
-      puts " Error: " + msg.to_s
+      puts " Error (proxmox): " + msg.to_s
     end
 
     #puts " Node stats: " + node.statistics.to_s
   end
 end
 
-proxmox = Proxmox.new($config_file,$pxm_master)
+class Container
+  def initialize()
+  end
 
-#containers = Container.new("1", "test1", 260, "")
+  def get_all()
+    begin
+      status, containers = $proxmox.get_containers()
+      if !status
+        return false, "proxmox get_containers failed!"
+      else
+        return true, containers
+      end
+    rescue Exception => msg
+      puts " Error (container): " + msg.to_s
+      return false, msg.to_s
+    end
+  end
+end
+
+$proxmox = Proxmox.new($config_file,$pxm_master)
+
 containers = Container.new()
 
 # Endpoints
@@ -114,6 +131,11 @@ namespace '/api' do
   end
 
   get '/containers' do
-    containers.all.to_json
+    status, rs = containers.get_all()
+    if status
+      rs.to_json
+    else
+      halt 503, {'Content-Type' => 'text/plain'}, rs
+    end
   end
 end

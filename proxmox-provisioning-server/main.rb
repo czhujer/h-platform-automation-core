@@ -8,11 +8,36 @@ require 'jaeger/client'
 require 'rack/tracer'
 
 # proxmox
+# https://github.com/fog/fog-proxmox
+require 'fog/proxmox'
+
+# https://docs.ruby-lang.org/en/2.1.0/Socket.html
+#require 'socket'
+
+require 'yaml'
+
+# vars
+$config_file = "/root/proxmox-config.yaml"
+$pxm_master = "localhost"
+#$pxm_master_name = Socket.gethostname
 
 # tracing init
 OpenTracing.global_tracer = Jaeger::Client.build(service_name: 'proxmox-provisioning-server')
 
 use Rack::Tracer
+
+#load proxmox login
+cnf = YAML::load(
+    File.open($config_file)
+)
+
+cnf_login_user = cnf[0]['login'][0]['user'].to_s
+cnf_login_password = cnf[0]['login'][1]['password'].to_s
+
+puts "Loaded from config: "
+puts "login user: " + cnf_login_user
+#puts "login password: " + cnf_login_password
+
 
 # Models
 class Container
@@ -32,6 +57,31 @@ class Container
   end
 end
 
+class Proxmox
+  def initialize()
+  end
+
+  def connect()
+    #puts "connect to proxmox server.."
+
+    compute = Fog::Compute::Proxmox.new(
+        pve_username: cnf_login_user,
+        pve_password: cnf_login_password,
+        pve_url: 'https://127.0.0.1:8006/api2/json',
+        connection_options: {
+            ssl_verify_peer: false,
+        }
+    )
+
+    begin
+      node = compute.nodes.find_by_id pxe_master
+    rescue Exception => msg
+      puts " Error: " + msg.to_s
+    end
+
+    puts " Node stats: " + node.statistics.to_s
+  end
+end
 containers = Container.new("1", "test1", 260, "")
 
 # Endpoints
@@ -46,7 +96,7 @@ namespace '/api' do
   end
 
   get do
-    "proxmox-provisioning-server api\n"
+    "{\"proxmox-provisioning-server api\"}\n"
   end
 
   get '/containers' do

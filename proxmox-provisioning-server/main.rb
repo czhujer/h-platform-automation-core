@@ -1,4 +1,5 @@
 require 'sinatra'
+require "sinatra/namespace"
 
 require 'opentracing'
 require 'jaeger/client'
@@ -8,6 +9,21 @@ OpenTracing.global_tracer = Jaeger::Client.build(service_name: 'proxmox-provisio
 
 use Rack::Tracer
 
+# DB Setup - Hidden
+
+# Models - Hidden
+
+# Endpoints
 get '/' do
-  'Hello'
+  'proxmox-provisioning-server index page'
+end
+
+namespace '/api ' do
+  before do
+    content_type 'application/json'
+  end
+
+  get '/containers' do
+    containers.all.to_json
+  end
 end

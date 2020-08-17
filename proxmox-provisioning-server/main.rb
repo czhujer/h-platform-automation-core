@@ -96,6 +96,29 @@ class Container
   def initialize()
   end
 
+  def get_parsed()
+    begin
+      status, all = get_all()
+      if !status
+        return false, "container get_all failed!"
+      else
+        if !all.nil?
+          containers = {}
+          all.each do |c|
+            #printf "\tID: %-10s Hostname:     %s\n", c.vmid, c.config.hostname
+            containers[c.vmid] = c.config.hostname
+          end
+          return true, containers
+        else
+          return true, {}
+        end
+      end
+    rescue Exception => msg
+      puts " Error (get_parsed): " + msg.to_s
+      return false, msg.to_s
+    end
+  end
+
   def get_all()
     begin
       status, containers = $proxmox.get_containers()
@@ -105,7 +128,7 @@ class Container
         return true, containers
       end
     rescue Exception => msg
-      puts " Error (container): " + msg.to_s
+      puts " Error (get_all): " + msg.to_s
       return false, msg.to_s
     end
   end
@@ -131,7 +154,7 @@ namespace '/api' do
   end
 
   get '/containers' do
-    status, rs = containers.get_all()
+    status, rs = containers.get_parsed()
     if status
       rs.to_json
     else

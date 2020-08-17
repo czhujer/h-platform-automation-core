@@ -15,7 +15,7 @@ use Rack::Tracer
 
 # Endpoints
 get '/' do
-  'proxmox-provisioning-server index page'
+  '<html><body>proxmox-provisioning-server index page</body></html>'
 end
 
 namespace '/api ' do

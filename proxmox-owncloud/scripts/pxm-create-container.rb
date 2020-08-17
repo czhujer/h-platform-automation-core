@@ -84,7 +84,7 @@ cnf_login_password = cnf[0]['login'][1]['password'].to_s
 
 puts "Loaded from config: "
 puts "login user: " + cnf_login_user
-puts "login password: " + cnf_login_password
+#puts "login password: " + cnf_login_password
 
 #methods
 def generate_ip(master, ctid)

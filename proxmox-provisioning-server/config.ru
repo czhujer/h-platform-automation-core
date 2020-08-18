@@ -7,6 +7,7 @@ require 'prometheus/middleware/exporter'
 require 'opentracing'
 require 'jaeger/client'
 require 'rack/tracer'
+require 'sinatra/instrumentation'
 
 # tracing init
 OpenTracing.global_tracer = Jaeger::Client.build(

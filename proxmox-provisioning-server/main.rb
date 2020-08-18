@@ -66,7 +66,10 @@ class Proxmox
   end
 
   def create_container(c_data)
+    output_data = {}
 
+
+    return true, output_data
   end
 
   private
@@ -101,7 +104,7 @@ class Proxmox
     begin
       @proxmox_node = compute.nodes.find_by_id pxm_master
     rescue Exception => msg
-      puts " Error (proxmox): " + msg.to_s
+      puts "Error (proxmox): " + msg.to_s
     end
 
     #puts " Node stats: " + node.statistics.to_s
@@ -130,7 +133,7 @@ class Container
         end
       end
     rescue Exception => msg
-      puts " Error (get_parsed): " + msg.to_s
+      puts "Error (get_parsed): " + msg.to_s
       return false, msg.to_s
     end
   end
@@ -144,7 +147,7 @@ class Container
         return true, containers
       end
     rescue Exception => msg
-      puts " Error (get_all): " + msg.to_s
+      puts "Error (get_all): " + msg.to_s
       return false, msg.to_s
     end
   end
@@ -186,7 +189,7 @@ class Container
         end
       end
     rescue Exception => msg
-      puts " Error (get_highest_vmid): " + msg.to_s
+      puts "Error (get_highest_vmid): " + msg.to_s
       return false, msg.to_s
     end
   end
@@ -197,9 +200,15 @@ class Container
     pxm_disk_size_increase = $pxm_disk_size_increase
     pxm_ostemplate = $pxm_ostemplate
 
-    status, highest_vmid = get_highest_vmid()
-    #TODO
-    # check if call failed
+    begin
+      status, highest_vmid = get_highest_vmid()
+      if !status
+        return false, "container get_highest_vmid failed!"
+      end
+    rescue Exception => msg
+      puts "Error (generate_data): " + msg.to_s
+      return false, msg.to_s
+    end
 
     ct_id = (highest_vmid.to_i + 1)
     ct_ip = generate_ip(ct_id)
@@ -232,7 +241,7 @@ class Container
     # !!! ATTENTION: hash contains ct password
     #puts "generated data: #{generated_data.inspect}"
 
-    return status, generated_data
+    return true, generated_data
   end
 
   def validate_input_data(input_data)
@@ -264,6 +273,8 @@ class Container
   end
 
   def create(input_data)
+    output_data = {}
+
     puts "Received JSON: #{input_data.inspect}"
 
     status, validated_data = validate_input_data(input_data)
@@ -275,14 +286,22 @@ class Container
     end
 
     status, generated_data = generate_data(validated_data)
-    #TODO
-    # check if generate_data failed
+    if !status
+      # data generation failed
+      # returning http 4xx
+      return false, generated_data
+    end
 
-    #TODO
-    # proxmox call for create container
-    #status, rs = $proxmox.create_container(generated_data)
+    status, rs = $proxmox.create_container(generated_data)
+    if !status
+      # container creation failed
+      # returning http 4xx
+      return false, rs
+    end
 
-    return true, generated_data
+    output_data.merge(generated_data)
+
+    return true, output_data
   end
 
   private

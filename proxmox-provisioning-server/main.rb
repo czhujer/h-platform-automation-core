@@ -16,6 +16,10 @@ require 'socket'
 
 require 'yaml'
 
+require 'json'
+
+set :show_exceptions, true
+
 # vars
 $config_file = "/root/proxmox-config.yaml"
 $pxm_master = Socket.gethostname
@@ -132,6 +136,12 @@ class Container
       return false, msg.to_s
     end
   end
+
+  def create(input_data)
+    puts "Received JSON: #{input_data.inspect}"
+
+    return true, true
+  end
 end
 
 $proxmox = Proxmox.new($config_file,$pxm_master)
@@ -149,6 +159,20 @@ namespace '/api' do
     content_type 'application/json'
   end
 
+  helpers do
+    def json_params
+      begin
+        data = request.body.read
+        if data.to_s.empty?
+          halt 411, { message:'Empty input data' }.to_json
+        end
+        JSON.parse(data)
+      rescue
+        halt 400, { message:'Invalid JSON' }.to_json
+      end
+    end
+  end
+
   get do
     "{\"proxmox-provisioning-server api\"}\n"
   end
@@ -159,6 +183,17 @@ namespace '/api' do
       rs.to_json
     else
       halt 503, {'Content-Type' => 'text/plain'}, rs
+    end
+  end
+
+  post '/containers/create' do
+    input_data = json_params
+
+    status, rs = containers.create(input_data)
+    if status
+      status 201
+    else
+      status 422
     end
   end
 end

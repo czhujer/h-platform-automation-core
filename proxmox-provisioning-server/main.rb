@@ -97,6 +97,9 @@ class Proxmox
     puts "add network card..."
     ct_update_rs = c.update({ net0: 'bridge=vmbr0,name=eth0,ip=' + c_data['ipaddress'].to_s + ',gw=192.168.222.1'})
 
+    #TODO
+    # ct_update_rs is empty
+    # c containts array with container parameters
     #puts "ct update: #{c.inspect}"
     output_data['container_update_status'] = ct_update_rs.to_s
 
@@ -352,8 +355,8 @@ class Container
       return false, rs
     end
 
-    output_data.merge(generated_data)
-    output_data.merge(rs)
+    output_data = output_data.merge(generated_data)
+    output_data = output_data.merge(rs)
 
     return true, output_data
   end

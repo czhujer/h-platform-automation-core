@@ -137,10 +137,56 @@ class Container
     end
   end
 
+  def get_highest_vmid()
+    ctids = []
+    ctid_highest = 0
+    begin
+      status, all = get_all()
+      if !status
+        return false, "container get_all failed!"
+      else
+        if !all.nil?
+          containers = {}
+          all.each do |c|
+            ctids.push(c.vmid)
+          end
+        end
+
+        if ctids.length > 0
+          ctids.sort!
+          ctids.each do |s|
+            if s.to_i > ctid_highest.to_i
+              ctid_highest = s
+            end
+          end
+          #puts "\t- - - - - - -"
+          #printf "\tCTID: %-8s highest_CTID:     %s\n", ctids.length.to_s, ctid_highest.to_s
+        else
+          # return default id: 200
+          ctid_highest = 200
+        end
+
+        if ctid_highest.to_i < 200
+          return false, "Error: Unable to find highest CTID."
+        else
+          return true, ctid_highest
+        end
+      end
+    rescue Exception => msg
+      puts " Error (get_highest_vmid): " + msg.to_s
+      return false, msg.to_s
+    end
+  end
+
   def create(input_data)
     puts "Received JSON: #{input_data.inspect}"
 
-    return true, true
+    status, highest_vmid = get_highest_vmid()
+    puts "get_highest_vmid: " + highest_vmid
+
+    input_data["highest_vmid"] = highest_vmid
+
+    return true, input_data
   end
 end
 
@@ -161,11 +207,11 @@ namespace '/api' do
 
   helpers do
     def json_params
+      data = request.body.read
+      if data.to_s.empty?
+        halt 411, { message:'Empty input data' }.to_json
+      end
       begin
-        data = request.body.read
-        if data.to_s.empty?
-          halt 411, { message:'Empty input data' }.to_json
-        end
         JSON.parse(data)
       rescue
         halt 400, { message:'Invalid JSON' }.to_json
@@ -192,6 +238,7 @@ namespace '/api' do
     status, rs = containers.create(input_data)
     if status
       status 201
+      rs.to_json
     else
       status 422
     end

@@ -9,7 +9,10 @@ require 'jaeger/client'
 require 'rack/tracer'
 
 # tracing init
-OpenTracing.global_tracer = Jaeger::Client.build(service_name: 'proxmox-provisioning-server')
+OpenTracing.global_tracer = Jaeger::Client.build(
+    service_name: 'proxmox-provisioning-server',
+)
+Jaeger::Samplers::Const.new(true)
 
 use Rack::Tracer
 

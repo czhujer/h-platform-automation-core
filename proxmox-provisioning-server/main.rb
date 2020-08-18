@@ -42,7 +42,7 @@ class Proxmox
   def initialize(config_file,pxm_master)
     config_file = config_file
     pxm_master = pxm_master
-    @node
+    @proxmox_node
 
     connect(config_file,pxm_master)
   end
@@ -65,9 +65,9 @@ class Proxmox
     end
   end
 
-  # def create_container()
-  #
-  # end
+  def create_container(c_data)
+
+  end
 
   private
 
@@ -205,16 +205,32 @@ class Container
     ct_ip = generate_ip(ct_id)
     ct_password = generate_pass(10)
 
-    generated_data["ctid"] = ct_id
-    generated_data["hostname"] = pxm_hostname_prefix + ct_id.to_s
-    generated_data["ostemplate"] = pxm_ostemplate
-    generated_data["disk"] = input_data["disk"] + pxm_disk_size_increase
-    generated_data["ram"] = input_data["ram"]
-    generated_data["ipaddress"] = ct_ip
-    generated_data["password"] = ct_password
+    disk = input_data['disk']
+    if disk.to_i < 1
+      disk = 5
+    else
+      disk = input_data['disk']
+    end
+
+    ram = input_data['ram']
+    if ram.to_i < 1
+      ram = 1024
+    else
+      ram = input_data['ram']
+    end
+
+    generated_data['ctid'] = ct_id
+    generated_data['hostname'] = pxm_hostname_prefix + ct_id.to_s
+    generated_data['ostemplate'] = pxm_ostemplate
+    generated_data['disk'] = (disk.to_i + pxm_disk_size_increase)
+    generated_data['ram'] = ram.to_i
+    generated_data['swap'] = 512
+    generated_data['ipaddress'] = ct_ip
+    generated_data['password'] = ct_password
 
     # debug print generated data/array
-    puts "generated data: #{generated_data.inspect}"
+    # !!! ATTENTION: hash contains ct password
+    #puts "generated data: #{generated_data.inspect}"
 
     return status, generated_data
   end
@@ -222,16 +238,26 @@ class Container
   def validate_input_data(input_data)
     output_data = {}
 
-    #TODO
-    # add logic
-    disk = input_data["disk"]
-    if disk.to_i < 1
-      output_data["disk"] = 5
-    end
-
-    ram = input_data["ram"]
-    if ram.to_i < 1
-      output_data["ram"] = 1024
+    input_data.each do |item, value|
+      if item == 'disk'
+        if value.nil?
+          return false, { message: 'input error: value for "disk" must be set' }
+        elsif value.to_i <= 4
+          return false, { message: 'input error: "disk" must be higher them 4 (GB)' }
+        else
+          output_data[item] = value
+        end
+      elsif item == 'ram'
+        if value.nil?
+          return false, { message: 'input error: value for "ram" must be set' }
+        elsif value.to_i <= 1023
+          return false, { message: 'input error: "ram" must be higher them 1023 (MB)' }
+        else
+          output_data[item] = value
+        end
+      else
+        return false, { message: "input error: item " + item.to_s + " is not allowed" }
+      end
     end
 
     return true, output_data
@@ -254,6 +280,7 @@ class Container
 
     #TODO
     # proxmox call for create container
+    #status, rs = $proxmox.create_container(generated_data)
 
     return true, generated_data
   end

@@ -21,8 +21,16 @@ require 'json'
 set :show_exceptions, true
 
 # vars
+# for proxmox api
 $config_file = "/root/proxmox-config.yaml"
 $pxm_master = Socket.gethostname
+
+# for generating proxmox containers
+$pxm_hostname_prefix = "oc-"
+# increase disk for OS space
+$pxm_disk_size_increase = 5
+# basic template
+$pxm_ostemplate = "local:vztmpl/centos-7-default_20190926_amd64.tar.xz"
 
 # tracing init
 OpenTracing.global_tracer = Jaeger::Client.build(service_name: 'proxmox-provisioning-server')
@@ -57,6 +65,10 @@ class Proxmox
     end
   end
 
+  # def create_container()
+  #
+  # end
+
   private
 
   def connect(config_file,pxm_master)
@@ -65,7 +77,7 @@ class Proxmox
 
     #load proxmox login
     cnf = YAML::load(
-        File.open($config_file)
+        File.open(config_file)
     )
 
     cnf_login_user = cnf[0]['login'][0]['user'].to_s
@@ -140,6 +152,7 @@ class Container
   def get_highest_vmid()
     ctids = []
     ctid_highest = 0
+
     begin
       status, all = get_all()
       if !status
@@ -178,15 +191,83 @@ class Container
     end
   end
 
+  def generate_data(input_data)
+    generated_data = {}
+    pxm_hostname_prefix = $pxm_hostname_prefix
+    pxm_disk_size_increase = $pxm_disk_size_increase
+    pxm_ostemplate = $pxm_ostemplate
+
+    status, highest_vmid = get_highest_vmid()
+    #TODO
+    # check if call failed
+
+    ct_id = (highest_vmid.to_i + 1)
+    ct_ip = generate_ip(ct_id)
+    ct_password = generate_pass(10)
+
+    generated_data["ctid"] = ct_id
+    generated_data["hostname"] = pxm_hostname_prefix + ct_id.to_s
+    generated_data["ostemplate"] = pxm_ostemplate
+    generated_data["disk"] = input_data["disk"] + pxm_disk_size_increase
+    generated_data["ram"] = input_data["ram"]
+    generated_data["ipaddress"] = ct_ip
+    generated_data["password"] = ct_password
+
+    # debug print generated data/array
+    puts "generated data: #{generated_data.inspect}"
+
+    return status, generated_data
+  end
+
+  def validate_input_data(input_data)
+    output_data = {}
+
+    #TODO
+    # add logic
+    disk = input_data["disk"]
+    if disk.to_i < 1
+      output_data["disk"] = 5
+    end
+
+    ram = input_data["ram"]
+    if ram.to_i < 1
+      output_data["ram"] = 1024
+    end
+
+    return true, output_data
+  end
+
   def create(input_data)
     puts "Received JSON: #{input_data.inspect}"
 
-    status, highest_vmid = get_highest_vmid()
-    puts "get_highest_vmid: " + highest_vmid
+    status, validated_data = validate_input_data(input_data)
 
-    input_data["highest_vmid"] = highest_vmid
+    if !status
+      # data validation failed
+      # returning http 4xx
+      return false, validated_data
+    end
 
-    return true, input_data
+    status, generated_data = generate_data(validated_data)
+    #TODO
+    # check if generate_data failed
+
+    #TODO
+    # proxmox call for create container
+
+    return true, generated_data
+  end
+
+  private
+
+  def generate_ip(ctid)
+    ip_d = (ctid.to_i - 200) + 10
+    ip = "192.168.222." + ip_d.to_s + '/24'
+  end
+
+  def generate_pass(number)
+    charset = Array('A'..'Z') + Array('a'..'z') + Array('0'..'9')
+    Array.new(number) { charset.sample }.join
   end
 end
 
@@ -241,6 +322,7 @@ namespace '/api' do
       rs.to_json
     else
       status 422
+      rs.to_json
     end
   end
 end

@@ -2,20 +2,10 @@
 require 'sinatra'
 require "sinatra/namespace"
 
-# tracing
-require 'opentracing'
-require 'jaeger/client'
-require 'rack/tracer'
-
 # proxmox
-# https://github.com/fog/fog-proxmox
 require 'fog/proxmox'
-
-# https://docs.ruby-lang.org/en/2.1.0/Socket.html
 require 'socket'
-
 require 'yaml'
-
 require 'json'
 
 set :show_exceptions, true
@@ -31,11 +21,6 @@ $pxm_hostname_prefix = "oc-"
 $pxm_disk_size_increase = 5
 # basic template
 $pxm_ostemplate = "local:vztmpl/centos-7-default_20190926_amd64.tar.xz"
-
-# tracing init
-OpenTracing.global_tracer = Jaeger::Client.build(service_name: 'proxmox-provisioning-server')
-
-use Rack::Tracer
 
 # Models
 class Proxmox

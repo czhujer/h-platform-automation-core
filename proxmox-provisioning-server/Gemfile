@@ -1,15 +1,14 @@
 source 'https://rubygems.org'
 
-gem 'sinatra'
-gem 'sinatra-contrib'
+gem 'sinatra', '~> 2'
+gem 'sinatra-contrib', '~> 2'
 
-gem 'rack-tracer'
-gem 'jaeger-client'
+gem 'rack', '~> 2'
+gem 'rack-tracer', '~> 0.9'
+gem 'jaeger-client', '~> 1.0'
 
-gem 'prometheus-client'
+gem 'prometheus-client', '>= 2'
 
-gem 'rack'
-
-gem 'unicorn'
+gem 'unicorn',  '>= 5',  '< 6'
 
 gem 'fog-proxmox', '0.5.5'

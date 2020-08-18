@@ -331,6 +331,7 @@ class Container
   end
 
   def create(input_data)
+
     output_data = {}
 
     puts "Received JSON: #{input_data.inspect}"
@@ -406,12 +407,15 @@ namespace '/api' do
   end
 
   get do
-    "{\"proxmox-provisioning-server api\"}\n"
+    OpenTracing.start_active_span('get root') do |scope|
+      scope.span.set_tag('component', "sinatra")
+      "{\"proxmox-provisioning-server api\"}\n"
+    end
   end
 
   get '/containers' do
     OpenTracing.start_active_span('get containers') do |scope|
-      scope.span.set_tag('component', "containers")
+      scope.span.set_tag('component', "sinatra")
 
       status, rs = containers.get_parsed()
 
@@ -426,15 +430,23 @@ namespace '/api' do
   end
 
   post '/containers/create' do
-    input_data = json_params
+    OpenTracing.start_active_span('containers create') do |scope|
+      scope.span.set_tag('component', "sinatra")
 
-    status, rs = containers.create(input_data)
-    if status
-      status 201
-      rs.to_json
-    else
-      status 422
-      rs.to_json
+      input_data = json_params
+
+      status, rs = containers.create(input_data)
+
+      scope.span.set_tag('containers.create.status', status)
+      scope.span.set_tag('containers.create.response', rs)
+
+      if status
+        status 201
+        rs.to_json
+      else
+        status 422
+        rs.to_json
+      end
     end
   end
 end

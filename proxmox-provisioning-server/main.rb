@@ -33,20 +33,26 @@ class Proxmox
   end
 
   def get_containers()
-    puts "loading existing containers..."
+    OpenTracing.start_active_span('get_containers') do |scope|
+      scope.span.set_tag('component', "proxmox")
+      scope.span.set_tag('proxmox_node.connection', @proxmox_node)
 
-    if @proxmox_node.nil?
-      msg = " Error: connect failed!"
-      puts msg
-      return false, msg.to_s
-    end
+      puts "loading existing containers..."
+      if @proxmox_node.nil?
+        msg = " Error: connect failed!"
+        puts msg
 
-    begin
-      containers = @proxmox_node.containers.all
-      return true, containers
-    rescue Exception => msg
-      puts " Error: " + msg.to_s
-      return false, msg.to_s
+        return false, msg.to_s
+      end
+
+      begin
+        containers = @proxmox_node.containers.all
+        scope.span.set_tag('proxmox_node.containers.all.response_length', containers.length)
+        return true, containers
+      rescue Exception => msg
+        puts " Error: " + msg.to_s
+        return false, msg.to_s
+      end
     end
   end
 
@@ -157,39 +163,50 @@ class Container
   end
 
   def get_parsed()
-    begin
-      status, all = get_all()
-      if !status
-        return false, "container get_all failed!"
-      else
-        if !all.nil?
-          containers = {}
-          all.each do |c|
-            #printf "\tID: %-10s Hostname:     %s\n", c.vmid, c.config.hostname
-            containers[c.vmid] = c.config.hostname
-          end
-          return true, containers
+    OpenTracing.start_active_span('get_parsed') do |scope|
+      scope.span.set_tag('component', "containers")
+      begin
+        status, all = get_all()
+        scope.span.set_tag('get_all.status', status)
+
+        if !status
+          return false, "container get_all failed!"
         else
-          return true, {}
+          if !all.nil?
+            containers = {}
+            all.each do |c|
+              #printf "\tID: %-10s Hostname:     %s\n", c.vmid, c.config.hostname
+              containers[c.vmid] = c.config.hostname
+            end
+            return true, containers
+          else
+            return true, {}
+          end
         end
+      rescue Exception => msg
+        puts "Error (get_parsed): " + msg.to_s
+        return false, msg.to_s
       end
-    rescue Exception => msg
-      puts "Error (get_parsed): " + msg.to_s
-      return false, msg.to_s
     end
   end
 
   def get_all()
-    begin
-      status, containers = $proxmox.get_containers()
-      if !status
-        return false, "proxmox get_containers failed!"
-      else
-        return true, containers
+    OpenTracing.start_active_span('get_all') do |scope|
+      scope.span.set_tag('component', "containers")
+
+      begin
+        status, containers = $proxmox.get_containers()
+        scope.span.set_tag('get_containers.status', status)
+
+        if !status
+          return false, "proxmox get_containers failed!"
+        else
+          return true, containers
+        end
+      rescue Exception => msg
+        puts "Error (get_all): " + msg.to_s
+        return false, msg.to_s
       end
-    rescue Exception => msg
-      puts "Error (get_all): " + msg.to_s
-      return false, msg.to_s
     end
   end
 
@@ -393,11 +410,18 @@ namespace '/api' do
   end
 
   get '/containers' do
-    status, rs = containers.get_parsed()
-    if status
-      rs.to_json
-    else
-      halt 503, {'Content-Type' => 'text/plain'}, rs
+    OpenTracing.start_active_span('get containers') do |scope|
+      scope.span.set_tag('component', "containers")
+
+      status, rs = containers.get_parsed()
+
+      scope.span.set_tag('get_parsed.status', status)
+
+      if status
+        rs.to_json
+      else
+        halt 503, {'Content-Type' => 'text/plain'}, rs
+      end
     end
   end
 

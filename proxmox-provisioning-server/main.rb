@@ -57,66 +57,75 @@ class Proxmox
   end
 
   def create_container(c_data)
-    output_data = {}
+    OpenTracing.start_active_span('create_container') do |scope|
+      scope.span.set_tag('component', 'proxmox')
 
-    puts "creating container..."
-    c = @proxmox_node.containers.create({
-                                            vmid:       c_data['ctid'],
-                                            storage:    'local',
-                                            ostemplate: c_data['ostemplate'],
-                                            password:   c_data['password'],
-                                            memory:     c_data['ram'].to_s,
-                                            swap:       c_data['swap'],
-                                            hostname:   c_data['hostname'],
-                                            rootfs:     'local:'+c_data['disk'].to_s,
-                                            onboot:     '1',
-                                        })
+      output_data = {}
 
-    output_data['container_create_status'] = c.to_s
+      puts "creating container..."
+      c = @proxmox_node.containers.create({
+                                              vmid:       c_data['ctid'],
+                                              storage:    'local',
+                                              ostemplate: c_data['ostemplate'],
+                                              password:   c_data['password'],
+                                              memory:     c_data['ram'].to_s,
+                                              swap:       c_data['swap'],
+                                              hostname:   c_data['hostname'],
+                                              rootfs:     'local:'+c_data['disk'].to_s,
+                                              onboot:     '1',
+                                          })
 
-    if c
-      puts 'container successfully created (ret_val: ' + c.to_s + ')'
-      #container_new.reload
-    else
-      puts 'container creation failed (ret_val: ' + c.to_s + ')'
-      return false, output_data
+      output_data['container_create_status'] = c.to_s
+      scope.span.set_tag('proxmox.containers.create.status', c)
+
+      if c
+        puts 'container successfully created (ret_val: ' + c.to_s + ')'
+        #container_new.reload
+      else
+        puts 'container creation failed (ret_val: ' + c.to_s + ')'
+        return false, output_data
+      end
+
+      puts "get container context..."
+      c = @proxmox_node.containers.get c_data['ctid']
+
+      puts "add network card..."
+      ct_update_rs = c.update({ net0: 'bridge=vmbr0,name=eth0,ip=' + c_data['ipaddress'].to_s + ',gw=192.168.222.1'})
+
+      #TODO
+      # ct_update_rs is empty
+      # c containts array with container parameters
+      #puts "ct update: #{c.inspect}"
+      output_data['container_update_status'] = ct_update_rs.to_s
+      scope.span.set_tag('proxmox.container_update.status', ct_update_rs)
+
+      if c
+        puts 'container successfully update (ret_val: ' + ct_update_rs.to_s + ')'
+        #container_new.reload
+      else
+        puts 'container update failed (ret_val: ' + ct_update_rs.to_s + ')'
+        return false, output_data
+      end
+
+      # start container
+      c.action('start')
+      c.wait_for { ready? }
+      status = c.ready?
+
+      output_data['container_start_status'] = status.to_s
+      scope.span.set_tag('proxmox.container_start.status', status)
+
+      scope.span.log_kv({'output_data': output_data})
+
+      if status
+        puts "container successfully started (ct status: " + status.to_s + ")"
+      else
+        puts "container starting failed (ct status: " + status.to_s + ")"
+        return false, output_data
+      end
+
+      return true, output_data
     end
-
-    puts "get container context..."
-    c = @proxmox_node.containers.get c_data['ctid']
-
-    puts "add network card..."
-    ct_update_rs = c.update({ net0: 'bridge=vmbr0,name=eth0,ip=' + c_data['ipaddress'].to_s + ',gw=192.168.222.1'})
-
-    #TODO
-    # ct_update_rs is empty
-    # c containts array with container parameters
-    #puts "ct update: #{c.inspect}"
-    output_data['container_update_status'] = ct_update_rs.to_s
-
-    if c
-      puts 'container successfully update (ret_val: ' + ct_update_rs.to_s + ')'
-      #container_new.reload
-    else
-      puts 'container update failed (ret_val: ' + ct_update_rs.to_s + ')'
-      return false, output_data
-    end
-
-    # start container
-    c.action('start')
-    c.wait_for { ready? }
-    status = c.ready?
-
-    output_data['container_start_status'] = status.to_s
-
-    if status
-      puts "container successfully started (ct status: " + status.to_s + ")"
-    else
-      puts "container starting failed (ct status: " + status.to_s + ")"
-      return false, output_data
-    end
-
-    return true, output_data
   end
 
   private
@@ -331,37 +340,48 @@ class Container
   end
 
   def create(input_data)
+    OpenTracing.start_active_span('create') do |scope|
+      scope.span.set_tag('component', "containers")
 
-    output_data = {}
+      output_data = {}
 
-    puts "Received JSON: #{input_data.inspect}"
+      puts "Received JSON: #{input_data.inspect}"
 
-    status, validated_data = validate_input_data(input_data)
+      status, validated_data = validate_input_data(input_data)
+      scope.span.set_tag('validate_input_data.status', status)
 
-    if !status
-      # data validation failed
-      # returning http 4xx
-      return false, validated_data
+      if !status
+        # data validation failed
+        # returning http 4xx
+        return false, validated_data
+      end
+
+      status, generated_data = generate_data(validated_data)
+      scope.span.set_tag('generate_data.status', status)
+
+      if !status
+        # data generation failed
+        # returning http 4xx
+        return false, generated_data
+      end
+
+      status, rs = $proxmox.create_container(generated_data)
+      scope.span.set_tag('proxmox.create_container.status', status)
+
+      if !status
+        # container creation failed
+        # returning http 4xx
+        return false, rs
+      end
+
+      output_data = output_data.merge(generated_data)
+      output_data = output_data.merge(rs)
+
+      scope.span.set_tag('output_data.length', output_data.length)
+      scope.span.log_kv({'output_data': output_data})
+
+      return true, output_data
     end
-
-    status, generated_data = generate_data(validated_data)
-    if !status
-      # data generation failed
-      # returning http 4xx
-      return false, generated_data
-    end
-
-    status, rs = $proxmox.create_container(generated_data)
-    if !status
-      # container creation failed
-      # returning http 4xx
-      return false, rs
-    end
-
-    output_data = output_data.merge(generated_data)
-    output_data = output_data.merge(rs)
-
-    return true, output_data
   end
 
   private
@@ -395,8 +415,16 @@ namespace '/api' do
   helpers do
     def json_params
       data = request.body.read
+      scope = OpenTracing.scope_manager.active
+
       if data.to_s.empty?
-        halt 411, { message:'Empty input data' }.to_json
+        msg = { message:'Empty input data' }
+        if scope
+          scope.span.set_tag('error', true)
+          scope.span.log_kv({'json_params.status': 411})
+          scope.span.log_kv({'json_params.response': msg})
+        end
+        halt 411, msg.to_json
       end
       begin
         JSON.parse(data)

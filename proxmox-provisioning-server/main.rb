@@ -68,6 +68,59 @@ class Proxmox
   def create_container(c_data)
     output_data = {}
 
+    puts "creating container..."
+    c = @proxmox_node.containers.create({
+                                            vmid:       c_data['ctid'],
+                                            storage:    'local',
+                                            ostemplate: c_data['ostemplate'],
+                                            password:   c_data['password'],
+                                            memory:     c_data['ram'].to_s,
+                                            swap:       c_data['swap'],
+                                            hostname:   c_data['hostname'],
+                                            rootfs:     'local:'+c_data['disk'].to_s,
+                                            onboot:     '1',
+                                        })
+
+    output_data['container_create_status'] = c.to_s
+
+    if c
+      puts 'container successfully created (ret_val: ' + c.to_s + ')'
+      #container_new.reload
+    else
+      puts 'container creation failed (ret_val: ' + c.to_s + ')'
+      return false, output_data
+    end
+
+    puts "get container context..."
+    c = @proxmox_node.containers.get c_data['ctid']
+
+    puts "add network card..."
+    ct_update_rs = c.update({ net0: 'bridge=vmbr0,name=eth0,ip=' + c_data['ipaddress'].to_s + ',gw=192.168.222.1'})
+
+    #puts "ct update: #{c.inspect}"
+    output_data['container_update_status'] = ct_update_rs.to_s
+
+    if c
+      puts 'container successfully update (ret_val: ' + ct_update_rs.to_s + ')'
+      #container_new.reload
+    else
+      puts 'container update failed (ret_val: ' + ct_update_rs.to_s + ')'
+      return false, output_data
+    end
+
+    # start container
+    c.action('start')
+    c.wait_for { ready? }
+    status = c.ready?
+
+    output_data['container_start_status'] = status.to_s
+
+    if status
+      puts "container successfully started (ct status: " + status.to_s + ")"
+    else
+      puts "container starting failed (ct status: " + status.to_s + ")"
+      return false, output_data
+    end
 
     return true, output_data
   end
@@ -300,6 +353,7 @@ class Container
     end
 
     output_data.merge(generated_data)
+    output_data.merge(rs)
 
     return true, output_data
   end

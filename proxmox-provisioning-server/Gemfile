@@ -5,3 +5,11 @@ gem 'sinatra-contrib'
 
 gem 'rack-tracer'
 gem 'jaeger-client'
+
+gem 'prometheus-client'
+
+gem 'rack'
+
+gem 'unicorn'
+
+gem 'fog-proxmox', '0.5.5'

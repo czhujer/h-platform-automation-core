@@ -9,6 +9,8 @@ server is designed for running directly/inside on proxmox VE server(s)
 
 ## docs
 - http://sinatrarb.com/
+- https://github.com/rack/rack
+- https://github.com/prometheus/client_ruby/tree/master/examples/rack
 - https://scoutapm.com/blog/tutorial-distributed-tracing-in-ruby-with-opentracing
 - https://github.com/opentracing/opentracing-ruby
 - https://github.com/fog/fog-proxmox

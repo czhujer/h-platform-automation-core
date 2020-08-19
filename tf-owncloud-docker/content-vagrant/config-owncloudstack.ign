@@ -1,0 +1,33 @@
+config = {
+  :ignition => {
+    :version => "2.2.0",
+  },
+  :passwd => {
+    :users => [{
+      :name => 'core',
+      :sshAuthorizedKeys => [
+        'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQCv+x4NKHMrFaS1VR71pnsGSq6en2EgmGBS3hHMm0l2AYBBwOVO2byokFo93w2IIe0tnJ+QerezGsAm1pGHrbx2HiTWF9uD+RyFQCQN0LKx1soMhEGryvjpS7rgDVMeCNn0Ej28m+NR1+6jhg4gA38c42ZZCcNd89pcpVWsMNpO/RVk25DfS/M5BJkUQMOoiMVwby0tJ62jh83fgzDMukynmA8xOX9D/uvL1kamEzbsA6Ioh8QRdBt4mlO6tnR6WxHTvGU5IHgE01Qm27s+YJpegH93VU0rxysGMGPd0VgvDHJmnR0l+ZR9d9T/iMzjxXw2ZX6FpG8JxwdAb9Wd2dySwFKZBwAXPtjm5GUTw22tk+gdk7FfgA2fjFeHGAVswX1loIREXMKpSuerGIrtroQwwBAEgnT84jqFnBYb5ApypaeKSQR1m6ZVnNjjBfj7t19lr+/hSRyorYZoGgFuryBY7R1UOH7zNAEnJlCLv7yab9ERCCwwukhP+nWoTjy6Fv+aF49LJpqiAbDV76TxAzjxvrFl4vv09NnVHVmYcIOaJuLWDmqS7CcLb8piFbcLvgTMxuN3OFZ0ybVfjA55bn9fPD2yIt57htwoaMU4sR3ULiybw6EAiIwJJT3Gq5WZ42Yh7G4WJIlnXCAy/4RL2Rtq/irXoaxn2Uw+KI0I5GkAOw== czhujer@czhujer-Latitude-5490',
+        'ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEA6NF8iallvQVp22WDkTkyrtvp9eWW6A8YVr+kz4TjGYe7gHzIw+niNltGEFHzD8+v1I2YJ6oXevct1YeS0o9HZyN1Q9qgCgzUFtdOKLv6IedplqoPkcmF0aYet2PkEDo3MlTBckFXPITAMzF8dJSIFo9D8HfdOV0IAdx4O7PtixWKn5y2hMNG0zQPyUecp4pzC6kivAIhyfHilFR61RGL+GPXQ2MWZWFYbAGjyiYJnAmCP3NOTd0jMZEnDkbUvxhMmBYSdETk1rRgm+R4LOzFUGaHqHDLKLX+FIPKcF96hrucXzcWyLbIbEgE98OHlnVYCzRdK8jlqm8tehUc9c9WhQ== vagrant',
+      ],
+      :passwordHash => "$6$SfuvSSLq$YJe.Qtnglb7Ct2oCSU1qlMWZOmWzGiN.Ue53gLe4rZ6meV9wv6rpt8LZEd4uGBsPqvR/I/UPNRunR4vjSw6jI1",
+    }],
+  },
+#  :storage => {
+#    :files => [{
+#      :filesystem => "root",
+#      :path       => "/etc/hostname",
+#      :mode       => 0644,
+#      :contents   => {
+#        inline: "",
+#      }
+#    }],
+#  }
+
+#    files:
+#      - filesystem: "root"
+#        path:       "/etc/hostname"
+#        mode:       0644
+#        contents:
+#          inline: alg-core-s1
+
+}

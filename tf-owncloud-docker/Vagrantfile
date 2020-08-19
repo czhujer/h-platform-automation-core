@@ -1,0 +1,91 @@
+# https://github.com/coreos/coreos-vagrant
+# https://github.com/kaarolch/kubespray/blob/master/Vagrantfile
+
+# https://coreos.com/os/docs/latest/cloud-config.html#write_files
+# https://coreos.com/ignition/docs/latest/examples.html#create-files-on-the-root-filesystem
+
+# Size of the cluster created by Vagrant
+num_instances=1
+
+# Change basename of the VM
+instance_name_prefix="hpa-coreos"
+
+#require 'json'
+
+Vagrant.require_version ">= 2.0.0"
+
+#ignition_file = File.join(File.dirname(__FILE__), 'config-owncloudstack.ign')
+
+Vagrant.configure("2") do |config|
+  # always use Vagrants insecure key
+  config.ssh.insert_key = false
+
+  # Official CoreOS channel from which updates should be downloaded
+  #update_channel='stable'
+  #config.vm.box_version = ">= 1122.0.0"
+  #config.vm.box_url = "http://%s.release.core-os.net/amd64-usr/current/coreos_production_vagrant.json" % update_channel
+
+  # mutated box (vagrant hasn't boxes for libvirt)
+  config.vm.box = "coreos_stable_prod"
+
+  config.ssh.username = "core"
+
+  config.vm.provider :libvirt do |v|
+    v.memory = 1024
+    v.cpus = 2
+
+    # this doesn't work
+    #v.qemuargs :value => '-fw_cfg'
+    #v.qemuargs :value => "name=opt/com.coreos/config,file=#{ignition_file}"
+  end
+
+  # plugin conflict
+  if Vagrant.has_plugin?("vagrant-vbguest") then
+    config.vbguest.auto_update = false
+  end
+
+  # Set up each box
+  (1..num_instances).each do |i|
+    vm_name = "%s-%02d" % [instance_name_prefix, i]
+
+    config.vm.define vm_name do |host|
+      host.vm.hostname = vm_name
+
+      # coreos-init (cloud-init)
+      host.vm.provision"copy-init-file",
+            type: "file",
+            :source => "content-vagrant/coreos-owncloudstack.yaml",
+            :destination => "/tmp/vagrantfile-user-data"
+
+      host.vm.provision "move-init-file",
+            type: "shell",
+            :inline => "mv /tmp/vagrantfile-user-data /var/lib/coreos-vagrant/",
+            :privileged => true
+
+      host.vm.provision "run-init-file",
+            type: "shell",
+            :inline => "/usr/bin/coreos-cloudinit --from-file=/var/lib/coreos-vagrant/vagrantfile-user-data",
+            :privileged => true,
+            run: "never"
+
+      host.vm.provision "recompose-owncloudstack",
+            type: "shell",
+            :inline => "cd /opt/docker/compose/owncloudstack && /opt/bin/docker-compose up -d",
+            :privileged => true,
+            run: "never"
+
+      host.vm.provision "status",
+        type: "shell",
+        inline: "cd /opt/docker/compose/owncloudstack && docker-compose ps",
+        privileged: true,
+        run: "never"
+
+      host.vm.provision "status2",
+        type: "shell",
+        inline: "cd /opt/docker/compose/promexporters && docker-compose ps",
+        privileged: true,
+        run: "never"
+
+    end
+  end
+end

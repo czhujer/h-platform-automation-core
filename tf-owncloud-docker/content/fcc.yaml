@@ -1,0 +1,475 @@
+---
+variant: fcos
+version: 1.0.0
+passwd:
+  users:
+    - name: ${user}
+      password_hash: ${password}
+      ssh_authorized_keys:
+        - ${ssh_key}
+      groups: [ sudo ]
+storage:
+  directories:
+    - path: /var/opt/bin
+      mode: 0755
+      user:
+        name: root
+      group:
+        name: root
+  files:
+    - path: /var/opt/docker/compose/owncloudstack/.env
+      mode: 0644
+      user:
+        name: root
+      group:
+        name: root
+      contents:
+        inline: |
+          DB_OWNCLOUD_USERNAME=owncloud_user
+          DB_OWNCLOUD_NAME=owncloud_db
+          DB_EXPORTER_USERNAME=mysql_exporter
+          # DB_OWNCLOUD_PASSWORD will be auto-generated
+          # DB_EXPORTER_PASSWORD will be auto-generated
+    - path: /var/opt/docker/compose/owncloudstack/.owncloud.env
+      mode: 0644
+      user:
+        name: root
+      group:
+        name: root
+      contents:
+        inline: |
+          OWNCLOUD_DOMAIN=localhost
+          OWNCLOUD_ADMIN_USERNAME=admin
+          # OWNCLOUD_ADMIN_PASSWORD will be auto-generated
+    - path: /var/opt/docker/compose/owncloudstack/.db.env
+      mode: 0644
+      user:
+        name: root
+      group:
+        name: root
+      contents:
+        inline: |
+          # MARIADB_ROOT_PASSWORD will be auto-generated
+    - path: /opt/docker/compose/owncloudstack/docker-compose.yaml
+      mode: 0644
+      user:
+        name: root
+      group:
+        name: root
+      contents:
+        inline: |
+          version: '3.7'
+
+          volumes:
+            web_data:
+              driver: local
+            db_data:
+              driver: local
+            backup:
+              driver: local
+            redis:
+              driver: local
+
+          services:
+            db:
+              image: mariadb/server:10.4
+              restart: always
+              env_file:
+                - .db.env
+              environment:
+                MARIADB_USER: $DB_OWNCLOUD_USERNAME
+                MARIADB_PASSWORD: $DB_OWNCLOUD_PASSWORD
+                MARIADB_DATABASE: $DB_OWNCLOUD_NAME
+                DB_EXPORTER_USERNAME: $DB_EXPORTER_USERNAME
+                DB_EXPORTER_PASSWORD: $DB_EXPORTER_PASSWORD
+              command:
+                --max_heap_table_size=16M
+                --innodb_buffer_pool_size=16M
+              volumes:
+                - db_data:/var/lib/mysql
+                - ./db-init:/docker-entrypoint-initdb.d
+              networks:
+                - app-network
+            db-exporter:
+              depends_on:
+                - db
+              image: prom/mysqld-exporter:latest
+              restart: always
+              environment:
+                - DATA_SOURCE_NAME=$DB_EXPORTER_USERNAME:$DB_EXPORTER_PASSWORD@(db:3306)/
+              networks:
+                - app-network
+              ports:
+                - "9104:9104"
+            redis:
+              image: webhippie/redis:latest
+              restart: always
+              environment:
+                - REDIS_DATABASES=1
+              healthcheck:
+                test: ["CMD", "/usr/bin/healthcheck"]
+                interval: 30s
+                timeout: 10s
+                retries: 5
+              volumes:
+                - redis:/var/lib/redis
+              networks:
+                - app-network
+            redis-exporter:
+              depends_on:
+                - redis
+              image: oliver006/redis_exporter:alpine
+              restart: always
+              networks:
+                - app-network
+              ports:
+                - "9121:9121"
+              environment:
+                - REDIS_ADDR=redis:6379
+
+            owncloud:
+              depends_on:
+                - db
+                - redis
+              image: owncloud/server:10.3
+              restart: unless-stopped
+              env_file:
+                - .owncloud.env
+              environment:
+                - OWNCLOUD_DB_USERNAME=$DB_OWNCLOUD_USERNAME
+                - OWNCLOUD_DB_PASSWORD=$DB_OWNCLOUD_PASSWORD
+                - OWNCLOUD_DB_NAME=$DB_OWNCLOUD_NAME
+                - OWNCLOUD_DB_TYPE=mysql
+                - OWNCLOUD_DB_HOST=db
+                - OWNCLOUD_MYSQL_UTF8MB4=true
+                - OWNCLOUD_REDIS_ENABLED=true
+                - OWNCLOUD_REDIS_HOST=redis
+              healthcheck:
+                test: ["CMD", "/usr/bin/healthcheck"]
+                interval: 30s
+                timeout: 10s
+                retries: 5
+              volumes:
+                - web_data:/mnt/data
+                - ./apache-conf/status.conf:/etc/apache2/mods-enabled/status.conf:z
+                - ./owncloud-conf/status-opcache/htaccess:/var/www/owncloud/status-opcache/.htaccess:z
+                - ./owncloud-conf/status-opcache/status.php:/var/www/owncloud/status-opcache/status.php:z
+              networks:
+                - app-network
+            apache-exporter:
+              depends_on:
+                - owncloud
+              image: mzupan/apache_exporter:v0.6.2
+              restart: always
+              networks:
+                - app-network
+              ports:
+                - "9117:9117"
+              command:
+                - "--scrape_uri=\"http://owncloud:8080/server-status/?auto\""
+            php-opcache-exporter:
+              depends_on:
+                - owncloud
+              image: czhujer/php-opcache-exporter:v0.4.1
+              restart: always
+              networks:
+                - app-network
+              ports:
+                - "9462:9462"
+              command:
+                python
+                php_opcache_exporter.py
+                --scrape_uri http://owncloud:8080/status-opcache/status.php
+
+            webserver:
+              depends_on:
+                - owncloud
+              image: nginx:1.17-alpine
+              restart: unless-stopped
+              healthcheck:
+                test: ["CMD", "wget", "-q", "http://127.0.0.1:8080/stub_status", "-O", "-"]
+                interval: 30s
+                timeout: 10s
+                retries: 5
+              ports:
+                - "80:80"
+              volumes:
+                - ./nginx-conf:/etc/nginx/conf.d:z
+              networks:
+                - app-network
+            webserver-exporter:
+              depends_on:
+                - webserver
+              image: nginx/nginx-prometheus-exporter:0.4.2
+              restart: always
+              networks:
+                - app-network
+              ports:
+                - "9113:9113"
+              command:
+                - "-nginx.scrape-uri"
+                - "http://webserver:8080/stub_status"
+
+          networks:
+            app-network:
+              driver: bridge
+    - path: /opt/docker/compose/promexporters/docker-compose.yaml
+      mode: 0644
+      user:
+        name: root
+      group:
+        name: root
+      contents:
+        inline: |
+          version: '3'
+
+          services:
+
+            nodeexporter:
+              image: prom/node-exporter:v0.18.1
+              container_name: nodeexporter
+              volumes:
+                - /proc:/host/proc:ro
+                - /sys:/host/sys:ro
+                - /:/rootfs:ro
+              command:
+                - '--path.procfs=/host/proc'
+                - '--path.rootfs=/rootfs'
+                - '--path.sysfs=/host/sys'
+                - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)'
+              restart: unless-stopped
+              network_mode: host
+              labels:
+                org.label-schema.group: "monitoring"
+
+            cadvisor:
+              image: google/cadvisor:v0.33.0
+              container_name: cadvisor
+              volumes:
+                - /:/rootfs:ro
+                - /var/run:/var/run:rw
+                - /sys:/sys:ro
+                - /var/lib/docker/:/var/lib/docker:ro
+                - /cgroup:/cgroup:ro
+              restart: unless-stopped
+              network_mode: host
+              labels:
+                org.label-schema.group: "monitoring"
+    - path: /opt/docker/compose/owncloudstack/nginx-conf/nginx.conf
+      mode: 0644
+      user:
+        name: root
+      group:
+        name: root
+      contents:
+        inline: |
+          upstream owncloud_server {
+                  server owncloud:8080 max_fails=3 fail_timeout=30s;
+          }
+
+          server {
+                  listen 80;
+                  listen [::]:80;
+
+                  #server_name example.com www.example.com;
+
+                  #location ~ /.well-known/acme-challenge {
+                  #        allow all;
+                  #        root /var/www/html;
+                  #}
+
+                  #location / {
+                  #        rewrite ^ https://$host$request_uri? permanent;
+                  #}
+          #}
+
+          #server {
+          #        listen 443 ssl http2;
+          #        listen [::]:443 ssl http2;
+          #        server_name example.com www.example.com;
+
+                  index index.php index.html index.htm;
+
+                  root /var/www/html;
+
+                  server_tokens off;
+
+                  #ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
+                  #ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
+
+                  #include /etc/nginx/conf.d/options-ssl-nginx.conf;
+
+                  add_header X-Frame-Options "SAMEORIGIN" always;
+                  add_header X-XSS-Protection "1; mode=block" always;
+                  add_header X-Content-Type-Options "nosniff" always;
+                  add_header Referrer-Policy "no-referrer-when-downgrade" always;
+                  add_header Content-Security-Policy "default-src * data: 'unsafe-eval' 'unsafe-inline'" always;
+                  # add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+                  # enable strict transport security only if you understand the implications
+
+                  location / {
+                          #proxy_set_header Host $host;
+                          #proxy_set_header X-Real-IP $remote_addr;
+                          #proxy_set_header Accept-Encoding "";
+                          proxy_pass http://owncloud_server;
+                  }
+
+                  location ~ /\.ht {
+                          deny all;
+                  }
+
+                  location = /favicon.ico {
+                          log_not_found off; access_log off;
+                  }
+                  location = /robots.txt {
+                          log_not_found off; access_log off; allow all;
+                  }
+                  #location ~* \.(css|gif|ico|jpeg|jpg|js|png)$ {
+                  #        expires max;
+                  #        log_not_found off;
+                  #}
+          }
+          server {
+              listen 8080;
+              listen [::]:8080;
+              location /stub_status {
+                  stub_status;
+
+                  access_log off;
+                  allow 127.0.0.1;
+                  allow 172.16.0.0/12;
+                  deny all;
+              }
+          }
+    - path: /opt/docker/compose/owncloudstack/apache-conf/status.conf
+      mode: 0644
+      user:
+        name: root
+      group:
+        name: root
+      contents:
+        inline: |
+          <IfModule mod_status.c>
+          # Allow server status reports generated by mod_status,
+          # with the URL of http://servername/server-status
+          # Uncomment and change the "192.0.2.0/24" to allow access from other hosts.
+
+          <Location /server-status>
+            SetHandler server-status
+            Require local
+            Require host apache-exporter
+            #Require ip 192.0.2.0/24
+          </Location>
+
+          # Keep track of extended status information for each request
+          ExtendedStatus On
+
+          # Determine if mod_status displays the first 63 characters of a request or
+          # the last 63, assuming the request itself is greater than 63 chars.
+          # Default: Off
+          #SeeRequestTail On
+
+
+          <IfModule mod_proxy.c>
+          # Show Proxy LoadBalancer status in mod_status
+          ProxyStatus On
+          </IfModule>
+
+
+          </IfModule>
+
+          # vim: syntax=apache ts=4 sw=4 sts=4 sr noet
+
+    - path: /opt/docker/compose/owncloudstack/owncloud-conf/status-opcache/htaccess
+      mode: 0644
+      user:
+        name: root
+      group:
+        name: root
+      contents:
+        inline: |
+      content: |
+        <IfModule mod_rewrite.c>
+          Options -MultiViews
+          RewriteCond %\{REQUEST_FILENAME\} !/status-opcache/status.php
+          RewriteRule . index.php [PT,E=PATH_INFO:$1]
+          RewriteBase /
+          <IfModule mod_env.c>
+            SetEnv front_controller_active true
+            <IfModule mod_dir.c>
+              DirectorySlash off
+            </IfModule>
+          </IfModule>
+        </IfModule>
+
+    - path: /opt/docker/compose/owncloudstack/owncloud-conf/status-opcache/status.php
+      mode: 0644
+      user:
+        name: root
+      group:
+        name: root
+      contents:
+        inline: |
+          <?php
+            header('Access-Control-Allow-Origin: *');
+            header('Content-Type: application/json');
+
+            echo (json_encode(opcache_get_status(),JSON_PRETTY_PRINT));
+          ?>
+
+    - path: /opt/docker/compose/owncloudstack/db-init/mysql_exporter_user.sh
+      mode: 0755
+      user:
+        name: root
+      group:
+        name: root
+      contents:
+        inline: |
+          #!/bin/bash
+          echo "creating user for mysql_exporter..."
+          sql1="CREATE USER 'mysql_exporter'@'%' IDENTIFIED BY \"$\{DB_EXPORTER_PASSWORD\}\" WITH MAX_USER_CONNECTIONS 3;"
+          sql2="GRANT PROCESS, REPLICATION CLIENT, SELECT ON *.* TO 'mysql_exporter'@'%';"
+          sql=$\{sql1\}" "$\{sql2\}
+          echo "$\{sql\}" | mysql
+systemd:
+  units:
+    - name: docker-compose-owncloudstack.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=owncloudstack service with docker compose
+        Requires=docker.service
+        After=docker.service
+
+        [Service]
+        Restart=always
+
+        # download docker-compose
+        ExecStartPre=-/bin/bash -c 'if [ ! -s /opt/bin/docker-compose ]; then sudo curl -s -L "https://github.com/docker/compose/releases/download/1.24.1/docker-compose-Linux-x86_64" > /opt/bin/docker-compose; fi;'
+        ExecStartPre=-/bin/bash -c 'if [ ! -x /opt/bin/docker-compose ]; then chmod 755 /opt/bin/docker-compose; fi;'
+
+        # download go-dotenv-generator
+        ExecStartPre=-/bin/bash -c 'if [ ! -s /opt/bin/go-dotenv-generator ]; then sudo curl -s -L "https://github.com/czhujer/go-dotenv-generator/releases/download/v1.0.8/go-dotenv-generator" > /opt/bin/go-dotenv-generator; fi;'
+        ExecStartPre=-/bin/bash -c 'if [ ! -x /opt/bin/go-dotenv-generator ]; then chmod 755 /opt/bin/go-dotenv-generator; fi;'
+
+        # generate passwords and write them in env file(s)
+        ExecStartPre=-/bin/bash -c '/opt/bin/go-dotenv-generator -f /opt/docker/compose/owncloudstack/.owncloud.env OWNCLOUD_ADMIN_PASSWORD'
+        ExecStartPre=-/bin/bash -c '/opt/bin/go-dotenv-generator -f /opt/docker/compose/owncloudstack/.db.env MARIADB_ROOT_PASSWORD'
+        ExecStartPre=-/bin/bash -c '/opt/bin/go-dotenv-generator -f /opt/docker/compose/owncloudstack/.env DB_OWNCLOUD_PASSWORD'
+        ExecStartPre=-/bin/bash -c '/opt/bin/go-dotenv-generator -f /opt/docker/compose/owncloudstack/.env DB_EXPORTER_PASSWORD'
+
+        # Remove old containers, images and volumes
+        #ExecStartPre=-/opt/bin/docker-compose down -v
+        #ExecStartPre=-/opt/bin/docker-compose rm -fv
+        #ExecStartPre=-/bin/bash -c 'docker volume ls -qf "name=%i_" | xargs docker volume rm'
+        #ExecStartPre=-/bin/bash -c 'docker network ls -qf "name=%i_" | xargs docker network rm'
+        #ExecStartPre=-/bin/bash -c 'docker ps -aqf "name=%i_*" | xargs docker rm'
+
+        # Compose up
+        ExecStart=/bin/bash -c 'cd /opt/docker/compose/owncloudstack && /opt/bin/docker-compose up'
+
+        # Compose down, remove containers
+        ExecStop=/bin/bash -c 'cd /opt/docker/compose/owncloudstack && /opt/bin/docker-compose down'
+
+        [Install]
+        WantedBy=multi-user.target

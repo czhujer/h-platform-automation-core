@@ -3,7 +3,7 @@ source 'https://rubygems.org'
 gem 'sinatra', '~> 2'
 gem 'sinatra-contrib', '~> 2'
 
-gem 'rack', '~> 2'
+gem 'rack', '~> 3'
 gem 'rack-tracer', '~> 0.9'
 gem 'jaeger-client', '~> 1.0'
 
